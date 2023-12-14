@@ -1,0 +1,118 @@
+library(Seurat)
+library(dplyr)
+library(tidyverse)
+library(enrichR)
+library(DT)
+# 1. READ IN THE DATA
+# cerebellum
+cer <- readRDS("Healthy.rds")
+#tumor
+tum <- readRDS("Tumor.rds")
+
+# 2. LOOK AT THE COMPOSITION
+#visualize cerebellum data
+DimPlot(cer, group.by = "cell_type")
+
+#visualize tumor data
+DimPlot(tum)
+#neurons
+FeaturePlot(tum, c("Slc17a6", "Gad1"))
+FeaturePlot(tum, "Snap25")
+#glia
+FeaturePlot(tum, c("Olig1", "Aldh1l1"))
+
+#make violin plots of the genes
+#purkinje cells - 7
+VlnPlot(cer, c("Calb1"))
+#endothelial - 6
+VlnPlot(cer, "Postn")
+
+# 3. INTEGRATE
+#make a list - first item is the map
+l <- list(cer, tum)
+#set features
+features <- SelectIntegrationFeatures(object.list = l)
+#find anchors
+anchors <- FindIntegrationAnchors(object.list = l, anchor.features = features, reduction="cca")
+#now we integrate (this can take a while)
+full <- IntegrateData(anchorset = anchors)
+
+#now re-analyze
+DefaultAssay(full) <- "integrated"
+# Run the standard workflow for visualization and clustering
+full <- ScaleData(full, verbose = FALSE)
+full <- RunPCA(full, verbose = FALSE)
+# check the number of PCs
+ElbowPlot(full, ndim=50)
+full <- RunUMAP(full, reduction = "pca", dims = 1:35)
+full <- FindNeighbors(full, dims = 1:20)
+full <- FindClusters(full, resolution = 0.3)
+# check it out again
+DimPlot(full)
+DimplotWT_cell<-DimPlot(full, group.by = "cell_type")
+png("DimplotWT_cell.png")
+print(DimplotWT_cell)
+dev.off()
+
+DimplotWT_Tissue<-DimPlot(full, group.by = "Tissue_Type")
+png("DimplotWT_Tissue.png")
+print(DimplotWT_Tissue)
+dev.off()
+
+# 4. BROAD GENE EXPRESSION CHANGES
+Idents(full) <- "Tissue_Type"
+
+#Find markers up and down regulated
+tumorGenes <- FindMarkers(full, ident.1 = "Tumor")
+tumorGenes <- filter(tumorGenes, p_val_adj<0.05)
+DT::datatable(tumorGenes)
+
+# Sort the DEG list by log-fold change
+tumorGenes_sorted <-tumorGenes[order(tumorGenes$avg_log2FC, decreasing = TRUE), ]
+
+# Extract the top 10 most upregulated and downregulated genes
+top_upregulated_genes <- head(tumorGenes_sorted, 10)
+top_downregulated_genes <- tail(tumorGenes_sorted, 10)
+
+# Print or view the results
+datatable(top_upregulated_genes)
+datatable(top_downregulated_genes)
+
+
+
+tumorGenes$Color="black"
+tumorGenes$Color[which(tumorGenes$avg_log2FC>=1 & tumorGenes$p_val_adj<=0.05 )]="red"
+tumorGenes$Color[which(tumorGenes$avg_log2FC<=-1 & tumorGenes$p_val_adj<=0.05 )]="blue"
+View(tumorGenes)
+ggplot(tumorGenes[which(tumorGenes$p_val_adj<1),],aes(x=avg_log2FC,y=-log10(p_val_adj),colour=Color))+
+  geom_point()+
+  geom_text(aes(label = ifelse(Color == "red", rownames(top_upregulated_genes), ifelse(Color == "blue", rownames(top_downregulated_genes), ""))),
+          hjust = 1, vjust = 1, size = 2)+
+  geom_vline(xintercept = c(-1,1))+theme_classic()+
+  scale_color_manual(labels=c("nonDEG","DownRegulatedGenes","UpRegulatedGenes"), values=c("green","blue","red"))
+
+
+
+# 5. CELL-TYPE-SPECIFIC GENE EXPRESSION CHANGES
+# segment out individual cluster
+# re-run analysis
+# re-run find markers on tumor genes
+Idents(full) <- "seurat_clusters"
+DimPlot(full)
+
+#create a subset of a cell type
+celltype <- subset(full, subset = seurat_clusters %in% c(4,5))
+DimplotWT_4_5<-DimPlot(celltype)
+png("DimplotWT_4_5.png")
+print(DimplotWT_4_5)
+dev.off()
+
+#6.use enrichr
+DEenrichRPlot(full, ident.1 = "Tumor", enrich.database ="GO_Biological_Process_2023",
+              max.genes = 500)
+
+DEenrichRPlot(full, ident.1 = "Tumor", enrich.database ="GO_Molecular_Function_2023",
+              max.genes = 500)
+
+saveRDS(full, file = "Healthy_Tumor.rds")
+readRDS("Healthy_Tumor.rds")
