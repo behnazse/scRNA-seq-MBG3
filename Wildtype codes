@@ -1,0 +1,127 @@
+library(Seurat)
+library(tidyverse)
+
+WT1 = read.table("E:/neurodata/Project/GSE129730/GSM3720936_WT01.dge.txt.gz", sep = "\t", header = TRUE)
+
+WT1[1:5, 1:5]
+rownames(WT1)<- WT1[,1]
+WT1<-WT1[,-1]
+
+sub= CreateSeuratObject(WT1)
+sub[["Tissue_Type"]] <- "Healthy"
+sub[["sample_ID"]]<- "WT1"
+dim(WT1)
+
+
+##quality control
+QC_vlnplot<-VlnPlot(sub, "nFeature_RNA") 
+
+
+png("QC_vlnplotW.png")
+print(QC_vlnplot)
+dev.off()
+
+sub[["percent.mt"]] <- PercentageFeatureSet(sub, pattern = "^mt-")
+
+VlnPlot.mt<-VlnPlot(sub, "percent.mt") 
+
+png("QC_vlnplotWmt.png")
+print(VlnPlot.mt)
+dev.off()
+
+sub <- subset(sub, nFeature_RNA<2500 & nFeature_RNA > 200 & percent.mt < 16)
+
+
+## Preprocessing the data
+
+sub <- NormalizeData(sub)
+
+sub <- ScaleData(sub)
+
+sub <- FindVariableFeatures(sub)
+
+
+sub <- RunPCA(sub)
+ElbowPlot=ElbowPlot(sub, ndim = 50) 
+
+png("ElbowPlotW.png")
+print(ElbowPlot)
+dev.off()
+
+sub <- RunUMAP(sub, dims =1:30, min.dist = 0.3, n.neighbors = 300)
+
+##clustering
+
+sub <- FindNeighbors(sub, dims = 1:30)
+
+sub <- FindClusters(sub, resolution = 0.3)
+Dimplot<-DimPlot(sub) 
+
+png("DimplotW.png")
+print(Dimplot)
+dev.off()
+
+#find marker genes first for all the cell types
+genes <- FindAllMarkers(cer)
+
+#Lets look at ENRICHED marker genes
+# cell type 0:
+c0 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 0)
+DT::datatable(c0)
+
+# cell type 1:
+c1 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 1)
+DT::datatable(c1)
+
+# cell type 2:
+c2 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 2)
+DT::datatable(c2)
+
+# cell type 3:
+c3 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 3)
+DT::datatable(c3)
+
+# cell type 4:
+c4 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 4)
+DT::datatable(c4)
+
+# cell type 5:
+c5 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 5)
+DT::datatable(c5)
+
+# cell type 6:
+c6 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 6)
+c6 <- FindMarkers(cer, ident.1 = 6)
+DT::datatable(c6)
+
+# cell type 7:
+c7 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 7)
+DT::datatable(c7)
+
+# cell type 8:
+c8 <- filter(genes, avg_log2FC > 0, pct.2<0.3, p_val_adj<0.05, cluster == 8)
+DT::datatable(c8)
+
+#cell type labels
+celltype <- c("progenitor_cells", "Endothelial_cells", "Neuroblast", "Macrophage",
+              "astrocytes", "oligodendrocytes", "Vascular", 
+              "purkinje_cells", "microglia")
+#add to metadata
+sub@meta.data <- mutate(sub@meta.data, cell_type = case_when(seurat_clusters==0 ~ celltype[1],
+                                                             seurat_clusters==1 ~ celltype[2],
+                                                             seurat_clusters==2 ~ celltype[3],
+                                                             seurat_clusters==3 ~ celltype[4],
+                                                             seurat_clusters==4 ~ celltype[5],
+                                                             seurat_clusters==5 ~ celltype[6],
+                                                             seurat_clusters==6 ~ celltype[7],
+                                                             seurat_clusters==7 ~ celltype[8],
+                                                             seurat_clusters==8 ~ celltype[9]))
+
+
+DimPlot(sub, group.by= "cell_type")
+#how to show them in a cluster?
+saveRDS(sub, file = "wsub.rds")
+loaded_seurat_obj <- readRDS("wsub.rds")
+
+
+
