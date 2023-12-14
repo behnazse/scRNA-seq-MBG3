@@ -1,0 +1,71 @@
+# Load required libraries
+library(Seurat)
+library(tidyverse)
+
+# Load raw gene counts
+df= read.table("E:/neurodata/Project/GSE155446/GSE155446_mouse_myc_dnp53_model_raw_counts.csv.gz", sep=",")
+colnames(df)=df[1,]
+df=df[-1,]
+rownames(df)=df[,1]
+df=df[,-1]
+dim(df)
+sub <- CreateSeuratObject(df)
+
+# Load cell metadata
+md = read.table("E:/neurodata/Project/GSE155446/GSE155446_mouse_myc_dnp53_model_cell_metadata.csv.gz", sep=",")
+dim(md)
+md[1,]=colnames(md)
+md=md[-1,]
+dim(md)
+rownames(md)=md[,1]
+md=md[,-1]
+colnames(md)=c("expt_ids","cell_types")
+sub[["Tissue_Type"]] <- "Tumor"
+
+#quality control
+QC_vlnplot<-VlnPlot(sub, "nFeature_RNA")
+
+png("QC_vlnplotT.png")
+print(QC_vlnplot)
+dev.off()
+
+
+sub[["percent.mt"]] <- PercentageFeatureSet(sub, pattern = "^mt-")
+
+QC_VlnPlotTmt<-VlnPlot(sub, "percent.mt")
+
+png("QC_VlnPlotTmt.png")
+print(QC_VlnPlotTmt)
+dev.off()
+
+sub <- subset(sub, nFeature_RNA<3000 & nFeature_RNA > 100 & percent.mt < 16)
+
+## Preprocessing the data
+
+sub <- NormalizeData(sub)
+
+sub <- ScaleData(sub)
+
+sub <- FindVariableFeatures(sub)
+
+sub <- RunPCA(sub)
+ElbowPlot=ElbowPlot(sub, ndim=50)
+
+png("ElbowPlotT.png")
+print(ElbowPlot)
+dev.off()
+
+sub <- RunUMAP(sub, dims = 1:30, min.dist = 0.3, n.neighbors = 300)
+
+##clustering
+sub <- FindNeighbors(sub, dims = 1:30)
+
+sub <- FindClusters(sub, resolution = 0.4)
+Dimplot<-DimPlot(sub) 
+
+png("DimplotT.png")
+print(Dimplot)
+dev.off()
+
+saveRDS(sub, file = "Tumor.rds")
+loaded_seurat_obj <- readRDS("Tumor.rds")
